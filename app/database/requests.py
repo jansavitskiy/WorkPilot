@@ -89,7 +89,6 @@ async def delete_all_work_records():
             return 0
 
 
-# Остальные существующие функции остаются
 async def update_user_fio(tg_id, new_fio):
     async with async_session() as session:
         try:
@@ -104,6 +103,48 @@ async def update_user_fio(tg_id, new_fio):
             return False
         except Exception as e:
             print(f"Error updating user FIO: {e}")
+            return False
+
+
+async def update_user_password(tg_id, password):
+    """Обновить пароль пользователя"""
+    async with async_session() as session:
+        try:
+            user = await session.scalar(
+                select(User).where(User.tg_id == tg_id)
+            )
+            
+            if user:
+                user.password = password
+                await session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error updating user password: {e}")
+            return False
+
+
+async def register_user(tg_id, fullname, password):
+    """Зарегистрировать пользователя (установить ФИО и пароль)"""
+    async with async_session() as session:
+        try:
+            user = await session.scalar(
+                select(User).where(User.tg_id == tg_id)
+            )
+            
+            if user:
+                # Обновляем существующего пользователя
+                user.fullname = fullname
+                user.password = password
+            else:
+                # Создаем нового пользователя
+                user = User(tg_id=tg_id, fullname=fullname, password=password)
+                session.add(user)
+            
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Error registering user: {e}")
             return False
 
 
