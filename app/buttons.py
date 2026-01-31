@@ -12,8 +12,15 @@ personal_menu = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text
 
 
 info_menu = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Записать информацию", callback_data="insert_info")],
+                                                  [InlineKeyboardButton(text="Список организаций", callback_data="org_list")],
                                                   [InlineKeyboardButton(text="Последняя запись", callback_data="last_info")],
                                                   [InlineKeyboardButton(text="Вернуться в меню", callback_data="back_to_menu")]])
+
+
+new_org_menu = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Записать организацию", callback_data="newOrga")],
+                                                     [InlineKeyboardButton(text="Вернуться в меню", callback_data="back_to_menu")]])
+
+cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Вернуться в меню", callback_data="back_to_menu")]])
 
 
 last_info_menu = InlineKeyboardMarkup(inline_keyboard=[[
@@ -26,6 +33,7 @@ last_info_menu = InlineKeyboardMarkup(inline_keyboard=[[
     ]
 )
 
+
 profile_settings = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Ваша последняя запись", callback_data="last_info")],
                                                          [InlineKeyboardButton(text="Изменить ФИО", callback_data="change_fio")],
                                                          [InlineKeyboardButton(text="Назад в меню", callback_data="back_to_menu")]])
@@ -37,15 +45,28 @@ cancel_button = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text
 admin_menu = InlineKeyboardMarkup(
     inline_keyboard=[
         [
+            InlineKeyboardButton(text="Добавить организацию", callback_data="get_organization")
+        ],
+        [
             InlineKeyboardButton(text="📊 Получить отчет", callback_data="admin_get_report"),
             InlineKeyboardButton(text="👥 Список сотрудников", callback_data="admin_users_list")
         ],
         [
             InlineKeyboardButton(text="🗑️ Удалить записи", callback_data="admin_clear_records"),
             InlineKeyboardButton(text="📈 Статистика", callback_data="admin_stats")
-        ],
+        ]
     ]
 )
+
+# Кнопка списка всех организаций
+organization_list = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="📊 Список организаций", callback_data="orglist")],
+                     [InlineKeyboardButton(text="Добавить организацию", callback_data="add_org")],
+                     [InlineKeyboardButton(text="Изменить список", callback_data="edit_list")],
+                     [InlineKeyboardButton(text="◀️ В меню", callback_data="admin_panel1")]
+                    ]
+)
+
 
 # Клавиатура подтверждения удаления
 confirm_delete_keyboard = InlineKeyboardMarkup(
@@ -59,6 +80,12 @@ confirm_delete_keyboard = InlineKeyboardMarkup(
         ]
     ]
 )
+
+back_admin_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="get_organization")]
+        ]
+    )
 
 # Клавиатура после отчета
 after_report_keyboard = InlineKeyboardMarkup(
