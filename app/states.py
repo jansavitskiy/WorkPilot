@@ -38,3 +38,12 @@ class Profile(StatesGroup):
 
 class AdminPanel(StatesGroup):
     report_days = State()
+
+
+class OrgStates(StatesGroup):
+    adding = State()
+    deleting = State()
+
+
+class OrganizationStates(StatesGroup):
+    waiting_for_org_name = State()
