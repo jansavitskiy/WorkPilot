@@ -1,16 +1,18 @@
 import io
+import os
 import csv
 from datetime import datetime
 from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters.command import CommandStart
+from aiogram.filters.command import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, FSInputFile
 
-from app.states import Registration, LoginState, AdminPassword, Info, EditInfo, DeleteConfirm, Profile, AdminPanel
+from app.states import Registration, LoginState, AdminPassword, Info, EditInfo, DeleteConfirm, Profile, OrgStates, OrganizationStates
 import app.buttons as kb
 import app.database.requests as rq
+from app.utils import orgs, org_manager, get_organizations_file
 from api import admin_password
 
 router = Router()
@@ -230,6 +232,128 @@ async def process_work_description(message: Message, state: FSMContext):
     
     await state.clear()
 
+
+@router.callback_query(F.data == "org_list")
+async def send_organizations(callback: CallbackQuery):
+    """Отправить файл со списком организаций"""
+    try:
+        # Получаем файл
+        file_path = get_organizations_file()
+        
+        if file_path and file_path.exists():
+            # Отправляем файл
+            document = FSInputFile(
+                path=file_path,
+                filename="organizations.xlsx"
+            )
+            
+            # Получаем статистику
+            orgs_count = len(org_manager.get_all_orgs())
+            
+            await callback.message.answer_document(
+                document=document,
+                caption=f"📋 Файл со списком организаций\n\nВсего организаций: {orgs_count}"
+            )
+            
+            # Показываем дополнительное меню
+            await callback.message.answer(
+                "Если вашей организации нет в списке, вы можете её добавить:",
+                reply_markup=kb.new_org_menu
+            )
+            
+            # Удаляем временный файл после отправки
+            try:
+                os.remove(file_path)
+            except:
+                pass
+        else:
+            await callback.message.answer(
+                "📭 Список организаций пока пуст.\n"
+                "Вы можете добавить первую организацию:",
+                reply_markup=kb.new_org_menu
+            )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка: {str(e)}")
+        await callback.answer()
+
+
+@router.callback_query(F.data == "newOrga")
+async def start_add_organization(callback: CallbackQuery, state: FSMContext):
+    """Начать процесс добавления новой организации"""
+    await callback.message.answer(
+        "✏️ Введите название новой организации:\n\n"
+        "Примеры:\n"
+        "• ООО 'Ромашка'\n"
+        "• ИП Иванов И.И.\n"
+        "• АО 'Строительные технологии'",
+        reply_markup=kb.cancel_kb
+    )
+    await state.set_state(OrganizationStates.waiting_for_org_name)
+    await callback.answer()
+
+
+@router.message(OrganizationStates.waiting_for_org_name)
+async def process_organization_name(message: Message, state: FSMContext):
+    """Обработать введенное название организации"""
+    org_name = message.text.strip()
+    
+    # Валидация
+    if len(org_name) < 2:
+        await message.answer("❌ Название слишком короткое. Введите еще раз:", reply_markup=kb.cancel_kb)
+        return
+    
+    if len(org_name) > 100:
+        await message.answer("❌ Название слишком длинное. Введите до 100 символов:", reply_markup=kb.cancel_kb)
+        return
+    
+    # Добавляем организацию
+    user_name = message.from_user.full_name or f"Сотрудник ID:{message.from_user.id}"
+    success, result_message = org_manager.check_and_add_org(org_name, user_name)
+    
+    if success:
+        # Обновляем кэшированный файл (если есть)
+        org_manager.cleanup_temp_files()
+        
+        await message.answer(
+            f"✅ {result_message}\n\n"
+            f"Организация <b>'{org_name}'</b> теперь доступна в общем списке.\n"
+            f"Вы можете найти её в файле с организациями.",
+            reply_markup=kb.cancel_kb
+        )
+    else:
+        await message.answer(
+            f"❌ {result_message}\n\n"
+            "Попробуйте ввести другое название организации:",
+            reply_markup=kb.cancel_kb
+        )
+    
+    await state.clear()
+
+
+# Обработчик отмены
+@router.callback_query(F.data == "cancel_org")
+async def cancel_organization(callback: CallbackQuery, state: FSMContext):
+    """Отменить добавление организации"""
+    await state.clear()
+    await callback.message.answer("❌ Добавление организации отменено")
+    await callback.message.answer("Выберите действие:", reply_markup=kb.new_org_menu)
+    await callback.answer()
+
+
+
+# Команда для админа для просмотра списка
+@router.message(Command("org_list"))
+async def show_organizations_list(message: Message):
+    """Показать список организаций (для админов)"""
+    # Проверка прав админа
+    if message.from_user.id not in "Zy2007br":  # Замените на свою проверку
+        return
+    
+    orgs_text = org_manager.get_formatted_list(limit=20)
+    await message.answer(orgs_text)
 
 
 # Обработчик для просмотра последней записи
@@ -464,6 +588,123 @@ async def process_change_fio(message: Message, state: FSMContext):
         )
     
     await state.clear()
+
+
+@router.callback_query(F.data == "get_organization")
+async def org_main(callback: CallbackQuery):
+    """Главное меню организаций"""
+    count = len(orgs.get_all_orgs())
+    
+    text = f"🏢 Управление организациями\n\nВсего организаций в списке сейчас: {count}"
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Посмотреть список", callback_data="view_orgs")],
+            [InlineKeyboardButton(text="➕ Добавить", callback_data="add_org")],
+            [InlineKeyboardButton(text="🗑 Удалить", callback_data="delete_org")],
+            [InlineKeyboardButton(text="📥 Скачать файл", callback_data="download_orgs")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_panel1")]
+        ]
+    )
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+# Посмотреть список
+@router.callback_query(F.data == "view_orgs")
+async def view_organizations(callback: CallbackQuery):
+    """Показать список организаций"""
+    org_list = orgs.get_all_orgs()
+    
+    if not org_list:
+        text = "📭 Список пуст"
+    else:
+        text = "📋 Список организаций:\n\n"
+        for i, org in enumerate(org_list, 1):
+            text += f"{i}. {org}\n"
+    
+    
+    await callback.message.edit_text(text, reply_markup=kb.back_admin_keyboard)
+
+
+# Добавить организацию
+@router.callback_query(F.data == "add_org")
+async def add_org_start(callback: CallbackQuery, state: FSMContext):
+    """Начать добавление"""
+    await callback.message.edit_text("Введите название новой организации:")
+    await state.set_state(OrgStates.adding)
+
+
+@router.message(OrgStates.adding)
+async def add_org_finish(message: Message, state: FSMContext):
+    """Завершить добавление"""
+    name = message.text.strip()
+    
+    if not name:
+        await message.answer("❌ Название не может быть пустым!",
+                             reply_markup=kb.back_admin_keyboard)
+        return
+    
+    if orgs.add_org(name):
+        await message.answer(f"✅ Добавлено: {name}",
+                             reply_markup=kb.back_admin_keyboard)
+    else:
+        await message.answer("❌ Ошибка при добавлении")
+    
+    await state.clear()
+
+# Удалить организацию
+@router.callback_query(F.data == "delete_org")
+async def delete_org_start(callback: CallbackQuery, state: FSMContext):
+    """Начать удаление"""
+    org_list = orgs.get_all_orgs()
+    
+    if not org_list:
+        await callback.message.edit_text("📭 Список организаций пуст")
+        return
+    
+    text = "Введите название организации для удаления:\n\n"
+    for org in org_list:
+        text += f"• {org}\n"
+    
+    await callback.message.edit_text(text)
+    await state.set_state(OrgStates.deleting)
+
+
+@router.message(OrgStates.deleting)
+async def delete_org_finish(message: Message, state: FSMContext):
+    """Завершить удаление"""
+    name = message.text.strip()
+    
+    if orgs.delete_org(name):
+        await message.answer(f"✅ Удалено: {name}",
+                             reply_markup=kb.back_admin_keyboard)
+    else:
+        await message.answer(f"❌ Организация '{name}' не найдена",
+                             reply_markup=kb.back_admin_keyboard)
+    
+    await state.clear()
+
+
+# Скачать файл
+@router.callback_query(F.data == "download_orgs")
+async def download_orgs_file(callback: CallbackQuery):
+    """Скачать Excel файл"""
+    excel_file = orgs.export_excel()
+    
+    if excel_file:
+        await callback.message.answer_document(
+            BufferedInputFile(
+                excel_file.read(),
+                filename="organizations.xlsx"
+            ),
+            caption="📁 Файл со списком организаций"
+        )
+        await callback.message.answer("Посмотрите этот список, если надо, то вы можете его изменить",
+                                      reply_markup=kb.back_admin_keyboard)
+    else:
+        await callback.message.answer("📭 Нет организаций для экспорта",
+                                      reply_markup=kb.back_admin_keyboard)
+
 
 @router.callback_query(F.data == "admin_get_report")
 async def admin_get_report(callback: CallbackQuery):
