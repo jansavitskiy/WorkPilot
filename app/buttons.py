@@ -36,7 +36,8 @@ last_info_menu = InlineKeyboardMarkup(inline_keyboard=[[
 
 profile_settings = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Ваша последняя запись", callback_data="last_info")],
                                                          [InlineKeyboardButton(text="Изменить ФИО", callback_data="change_fio")],
-                                                         [InlineKeyboardButton(text="Назад в меню", callback_data="back_to_menu")]])
+                                                         [InlineKeyboardButton(text="Назад в меню", callback_data="back_to_menu")],
+                                                         [InlineKeyboardButton(text="Выход в панель админа", callback_data="back_to_admin_list")]])
 
 # Кнопка отмены во время заполнения информации
 cancel_button = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_info")]])
@@ -54,7 +55,8 @@ admin_menu = InlineKeyboardMarkup(
         [
             InlineKeyboardButton(text="🗑️ Удалить записи", callback_data="admin_clear_records"),
             InlineKeyboardButton(text="📈 Статистика", callback_data="admin_stats")
-        ]
+        ],
+        [InlineKeyboardButton(text="Выход в меню сотрудника", callback_data="go_to_staff_panel")]
     ]
 )
 
