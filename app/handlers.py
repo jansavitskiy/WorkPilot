@@ -1034,6 +1034,18 @@ async def tasks(callback: CallbackQuery):
 async def back_panel1(callback: CallbackQuery):
     await callback.message.answer("Вернул вас назад в панель администратора, можете выбирать нужную функцию",
                                   reply_markup=kb.admin_menu)
+    
+
+@router.callback_query(F.data == "go_to_staff_panel")
+async def go_staff_panel(callback: CallbackQuery):
+    await callback.message.answer("Вернул вас в панель сотрудника, вернуться назад можно через кнопку настроек",
+                                  reply_markup=kb.personal_menu)
+    
+
+@router.callback_query(F.data == "back_to_admin_list")
+async def go_staff_panel(callback: CallbackQuery):
+    await callback.message.answer("Вернул вас в главное меню, а панель админа попасть можно через кнопку входа туда",
+                                  reply_markup=kb.start_menu)
 
 
 @router.callback_query(F.data == "back_to_menu")
