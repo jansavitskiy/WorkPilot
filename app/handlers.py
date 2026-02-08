@@ -8,6 +8,7 @@ from aiogram.filters.command import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import BufferedInputFile, FSInputFile
+from app.states import NotesStates
 
 from app.states import Registration, LoginState, AdminPassword, Info, EditInfo, DeleteConfirm, Profile, OrgStates, OrganizationStates
 import app.buttons as kb
@@ -1019,15 +1020,16 @@ async def admin_stats(callback: CallbackQuery):
     await callback.answer()
     
 
-@router.callback_query(F.data == "tasks")
-async def tasks(callback: CallbackQuery): 
-    await callback.message.answer("Это функция временно на доработке") 
-
-
-# your_notes
 @router.callback_query(F.data == "your_notes")
-async def tasks(callback: CallbackQuery): 
-    await callback.message.answer("Это функция временно на доработке") 
+async def start_notes(callback: CallbackQuery, state: FSMContext):
+    """Начало работы с заметками"""
+    await callback.message.answer(
+        "📝 Добро пожаловать в раздел заметок.\n"
+        "Выберите действие:",
+        reply_markup=kb.notes_menu
+    )
+    await callback.answer()
+
 
 
 @router.callback_query(F.data == "admin_panel1")
@@ -1064,3 +1066,78 @@ async def last_info(callback: CallbackQuery):
 async def back_2_info_menu(callback: CallbackQuery):
     await callback.message.answer("Вернул вас назад в меню записи о работе", 
                                   reply_markup=kb.info_menu)
+
+
+#UPD:
+
+# Заметки
+@router.callback_query(F.data == "your_notes")
+async def start_notes(callback: CallbackQuery, state: FSMContext):
+    """Начало работы с заметками"""
+    await callback.message.answer(
+        "📝 Добро пожаловать в раздел заметок.\n"
+        "Выберите действие:",
+        reply_markup=kb.notes_menu  # Кнопки: 'Создать заметку', 'Посмотреть заметки'
+    )
+    await callback.answer()
+
+
+# Начало создания заметки
+@router.callback_query(F.data == "create_note")
+async def create_note_start(callback: CallbackQuery, state: FSMContext):
+    """Переход в состояние ввода заголовка заметки"""
+    await state.set_state(NotesStates.title)
+    await callback.message.answer("✏️ Введите заголовок заметки:")
+    await callback.answer()
+
+
+# Ввод заголовка заметки
+@router.message(NotesStates.title)
+async def create_note_title(message: Message, state: FSMContext):
+    await state.update_data(title=message.text)  # Сохраняем заголовок
+    await state.set_state(NotesStates.content)  # Переходим к вводу текста
+    await message.answer("📝 Теперь введите текст заметки:")
+
+
+# Ввод текста заметки и сохранение
+@router.message(NotesStates.content)
+async def create_note_content(message: Message, state: FSMContext):
+    data = await state.get_data()
+    title = data.get('title')
+    content = message.text
+    
+    # Сохраняем заметку через requests.py
+    success = await rq.save_note(user_id=message.from_user.id, title=title, content=content)
+    
+    if success:
+        await message.answer(
+            f"✅ Заметка '{title}' успешно сохранена!", 
+            reply_markup=kb.info_menu  # Возврат в меню работы
+        )
+    else:
+        await message.answer(
+            "❌ Ошибка при сохранении заметки. Попробуйте снова.", 
+            reply_markup=kb.info_menu
+        )
+    
+    await state.clear()  # Очистка состояния
+
+
+# Просмотр заметок
+@router.callback_query(F.data == "view_notes")
+async def view_notes(callback: CallbackQuery):
+    """Отправка списка заметок пользователя"""
+    notes = await rq.get_user_notes(callback.from_user.id)
+    
+    if not notes:
+        await callback.message.answer("📭 У вас пока нет заметок.", reply_markup=kb.info_menu)
+        await callback.answer()
+        return
+    
+    text = "📝 Ваши заметки:\n\n"
+    for n in notes:
+        text += f"• {n.title} ({n.date.strftime('%d.%m.%Y')})\n"
+    
+    await callback.message.answer(text, reply_markup=kb.info_menu)
+    await callback.answer()
+

@@ -1,3 +1,8 @@
+
+
+
+
+
 # Python
 __pycache__/
 *.py[cod]
@@ -69,3 +74,12 @@ alembic.versions/
 # Temporary files
 temp/
 tmp/
+# Virtual environments
+venv/
+venv311/
+
+# Local files
+db.sqlite3
+WorkPilot/
+organizations.csv
+

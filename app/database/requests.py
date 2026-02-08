@@ -222,3 +222,38 @@ async def delete_work_info(record_id):
         except Exception as e:
             print(f"Error deleting work info: {e}")
             return False
+
+
+# UPD: Заметки
+
+async def save_note(user_id, title, content):
+    """Сохранить новую заметку"""
+    async with async_session() as session:
+        try:
+            note = Note(user_id=user_id, title=title, content=content, date=datetime.now())
+            session.add(note)
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving note: {e}")
+            return False
+
+
+async def get_user_notes(user_id):
+    """Получить все заметки пользователя"""
+    async with async_session() as session:
+        result = await session.execute(
+            select(Note).where(Note.user_id == user_id).order_by(desc(Note.date))
+        )
+        return result.scalars().all()
+
+
+async def delete_note(note_id):
+    """Удалить заметку"""
+    async with async_session() as session:
+        note = await session.scalar(select(Note).where(Note.id == note_id))
+        if note:
+            await session.delete(note)
+            await session.commit()
+            return True
+        return False

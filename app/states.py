@@ -47,3 +47,13 @@ class OrgStates(StatesGroup):
 
 class OrganizationStates(StatesGroup):
     waiting_for_org_name = State()
+
+#UPD:
+
+from aiogram.fsm.state import State, StatesGroup
+
+
+class NotesStates(StatesGroup):
+    title = State()        # Ввод названия заметки
+    content = State()  # Ввод заметки
+
