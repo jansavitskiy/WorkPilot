@@ -1,7 +1,7 @@
 # requests.py
 from sqlalchemy import select, delete, update, desc, func, cast, Float
 from app.database.models import async_session
-from app.database.models import User, Info
+from app.database.models import User, Info, Note
 from datetime import datetime, timedelta
 
 
@@ -223,8 +223,7 @@ async def delete_work_info(record_id):
             print(f"Error deleting work info: {e}")
             return False
 
-
-# UPD: Заметки
+#UPD: Заметки
 
 async def save_note(user_id, title, content):
     """Сохранить новую заметку"""
@@ -248,12 +247,52 @@ async def get_user_notes(user_id):
         return result.scalars().all()
 
 
-async def delete_note(note_id):
-    """Удалить заметку"""
+#UPD: Функция получения заметки по ID с проверкой прав доступа
+async def get_note_by_id(note_id, user_id):
+    """Получить заметку по ID (с проверкой принадлежности пользователю)"""
     async with async_session() as session:
-        note = await session.scalar(select(Note).where(Note.id == note_id))
-        if note:
-            await session.delete(note)
-            await session.commit()
-            return True
-        return False
+        note = await session.scalar(
+            select(Note).where(Note.id == note_id).where(Note.user_id == user_id)
+        )
+        return note
+
+
+#UPD: Функция обновления заметки (заголовок и/или содержимое)
+async def update_note(note_id, user_id, title=None, content=None):
+    """Обновить заметку"""
+    async with async_session() as session:
+        try:
+            note = await session.scalar(
+                select(Note).where(Note.id == note_id).where(Note.user_id == user_id)
+            )
+            
+            if note:
+                if title is not None:
+                    note.title = title
+                if content is not None:
+                    note.content = content
+                note.date = datetime.now()  # Обновляем дату изменения
+                
+                await session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error updating note: {e}")
+            return False
+
+
+async def delete_note(note_id, user_id):
+    """Удалить заметку (с проверкой принадлежности пользователю)"""
+    async with async_session() as session:
+        try:
+            note = await session.scalar(
+                select(Note).where(Note.id == note_id).where(Note.user_id == user_id)
+            )
+            if note:
+                await session.delete(note)
+                await session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error deleting note: {e}")
+            return False

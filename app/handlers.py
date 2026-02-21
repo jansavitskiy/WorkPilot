@@ -1020,18 +1020,6 @@ async def admin_stats(callback: CallbackQuery):
     await callback.answer()
     
 
-@router.callback_query(F.data == "your_notes")
-async def start_notes(callback: CallbackQuery, state: FSMContext):
-    """Начало работы с заметками"""
-    await callback.message.answer(
-        "📝 Добро пожаловать в раздел заметок.\n"
-        "Выберите действие:",
-        reply_markup=kb.notes_menu
-    )
-    await callback.answer()
-
-
-
 @router.callback_query(F.data == "admin_panel1")
 async def back_panel1(callback: CallbackQuery):
     await callback.message.answer("Вернул вас назад в панель администратора, можете выбирать нужную функцию",
@@ -1079,7 +1067,7 @@ async def start_notes(callback: CallbackQuery, state: FSMContext):
         "Выберите действие:",
         reply_markup=kb.notes_menu  # Кнопки: 'Создать заметку', 'Посмотреть заметки'
     )
-    await callback.answer()
+    
 
 
 # Начало создания заметки
@@ -1099,7 +1087,7 @@ async def create_note_title(message: Message, state: FSMContext):
     await message.answer("📝 Теперь введите текст заметки:")
 
 
-# Ввод текста заметки и сохранение
+#UPD: Исправлен обработчик сохранения заметки - теперь возвращает в меню заметок вместо info_menu
 @router.message(NotesStates.content)
 async def create_note_content(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -1112,32 +1100,210 @@ async def create_note_content(message: Message, state: FSMContext):
     if success:
         await message.answer(
             f"✅ Заметка '{title}' успешно сохранена!", 
-            reply_markup=kb.info_menu  # Возврат в меню работы
+            reply_markup=kb.notes_menu  # Возврат в меню заметок
         )
     else:
         await message.answer(
             "❌ Ошибка при сохранении заметки. Попробуйте снова.", 
-            reply_markup=kb.info_menu
+            reply_markup=kb.notes_menu
         )
     
     await state.clear()  # Очистка состояния
 
 
-# Просмотр заметок
+#UPD: Улучшен обработчик просмотра заметок - добавлены динамические кнопки для каждой заметки
 @router.callback_query(F.data == "view_notes")
 async def view_notes(callback: CallbackQuery):
     """Отправка списка заметок пользователя"""
     notes = await rq.get_user_notes(callback.from_user.id)
     
     if not notes:
-        await callback.message.answer("📭 У вас пока нет заметок.", reply_markup=kb.info_menu)
+        await callback.message.answer(
+            "📭 У вас пока нет заметок.\n\nСоздайте первую заметку!",
+            reply_markup=kb.notes_menu
+        )
         await callback.answer()
         return
     
     text = "📝 Ваши заметки:\n\n"
-    for n in notes:
-        text += f"• {n.title} ({n.date.strftime('%d.%m.%Y')})\n"
+    for i, n in enumerate(notes, 1):
+        text += f"{i}. {n.title}\n   📅 {n.date.strftime('%d.%m.%Y %H:%M')}\n\n"
     
-    await callback.message.answer(text, reply_markup=kb.info_menu)
+    await callback.message.answer(
+        text,
+        reply_markup=kb.get_notes_list_keyboard(notes)
+    )
+    await callback.answer()
+
+
+#UPD: Обработчик просмотра конкретной заметки по ID
+@router.callback_query(F.data.startswith("show_note_"))
+async def show_note(callback: CallbackQuery):
+    """Показать конкретную заметку"""
+    note_id = int(callback.data.split("_")[-1])
+    note = await rq.get_note_by_id(note_id, callback.from_user.id)
+    
+    if not note:
+        await callback.message.answer(
+            "❌ Заметка не найдена или у вас нет доступа к ней.",
+            reply_markup=kb.back_to_notes_menu
+        )
+        await callback.answer()
+        return
+    
+    text = (
+        f"📄 *{note.title}*\n\n"
+        f"📝 *Содержание:*\n{note.content}\n\n"
+        f"📅 Дата создания: {note.date.strftime('%d.%m.%Y %H:%M')}"
+    )
+    
+    await callback.message.answer(
+        text,
+        parse_mode="Markdown",
+        reply_markup=kb.get_note_keyboard(note_id)
+    )
+    await callback.answer()
+
+
+#UPD: Обработчик начала редактирования заметки
+@router.callback_query(F.data.startswith("edit_note_"))
+async def edit_note_start(callback: CallbackQuery, state: FSMContext):
+    """Начать редактирование заметки"""
+    note_id = int(callback.data.split("_")[-1])
+    note = await rq.get_note_by_id(note_id, callback.from_user.id)
+    
+    if not note:
+        await callback.message.answer(
+            "❌ Заметка не найдена или у вас нет доступа к ней.",
+            reply_markup=kb.back_to_notes_menu
+        )
+        await callback.answer()
+        return
+    
+    # Сохраняем ID заметки для редактирования
+    await state.update_data(edit_note_id=note_id)
+    await state.set_state(NotesStates.edit_title)
+    
+    await callback.message.answer(
+        f"✏️ Редактирование заметки: *{note.title}*\n\n"
+        f"Текущий заголовок: {note.title}\n"
+        f"Введите новый заголовок (или отправьте текущий, чтобы оставить без изменений):",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+#UPD: Обработчик редактирования заголовка заметки
+@router.message(NotesStates.edit_title)
+async def edit_note_title(message: Message, state: FSMContext):
+    """Обработка нового заголовка заметки"""
+    new_title = message.text.strip()
+    data = await state.get_data()
+    note_id = data.get('edit_note_id')
+    
+    # Получаем заметку для показа текущего содержимого
+    note = await rq.get_note_by_id(note_id, message.from_user.id)
+    if not note:
+        await message.answer("❌ Заметка не найдена.", reply_markup=kb.notes_menu)
+        await state.clear()
+        return
+    
+    # Сохраняем новый заголовок
+    await state.update_data(edit_title=new_title)
+    await state.set_state(NotesStates.edit_content)
+    
+    await message.answer(
+        f"Текущее содержимое:\n{note.content}\n\n"
+        f"Введите новое содержимое заметки:"
+    )
+
+
+#UPD: Обработчик редактирования содержимого заметки и сохранения изменений
+@router.message(NotesStates.edit_content)
+async def edit_note_content(message: Message, state: FSMContext):
+    """Обработка нового содержимого заметки и сохранение"""
+    data = await state.get_data()
+    note_id = data.get('edit_note_id')
+    new_title = data.get('edit_title')
+    new_content = message.text
+    
+    # Обновляем заметку в БД
+    success = await rq.update_note(
+        note_id=note_id,
+        user_id=message.from_user.id,
+        title=new_title,
+        content=new_content
+    )
+    
+    if success:
+        await message.answer(
+            f"✅ Заметка успешно обновлена!",
+            reply_markup=kb.notes_menu
+        )
+    else:
+        await message.answer(
+            "❌ Ошибка при обновлении заметки.",
+            reply_markup=kb.notes_menu
+        )
+    
+    await state.clear()
+
+
+#UPD: Обработчик начала процесса удаления заметки с подтверждением
+@router.callback_query(F.data.startswith("delete_note_"))
+async def delete_note_start(callback: CallbackQuery, state: FSMContext):
+    """Начать процесс удаления заметки"""
+    note_id = int(callback.data.split("_")[-1])
+    note = await rq.get_note_by_id(note_id, callback.from_user.id)
+    
+    if not note:
+        await callback.message.answer(
+            "❌ Заметка не найдена или у вас нет доступа к ней.",
+            reply_markup=kb.back_to_notes_menu
+        )
+        await callback.answer()
+        return
+    
+    await callback.message.answer(
+        f"⚠️ *Подтверждение удаления*\n\n"
+        f"Вы уверены, что хотите удалить заметку:\n"
+        f"*{note.title}*\n\n"
+        f"📅 Создана: {note.date.strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Это действие нельзя отменить!",
+        parse_mode="Markdown",
+        reply_markup=kb.get_confirm_delete_note_keyboard(note_id)
+    )
+    await callback.answer()
+
+
+#UPD: Обработчик подтверждения и выполнения удаления заметки
+@router.callback_query(F.data.startswith("confirm_delete_note_"))
+async def confirm_delete_note(callback: CallbackQuery):
+    """Удалить заметку после подтверждения"""
+    note_id = int(callback.data.split("_")[-1])
+    note = await rq.get_note_by_id(note_id, callback.from_user.id)
+    
+    if not note:
+        await callback.message.answer(
+            "❌ Заметка не найдена или у вас нет доступа к ней.",
+            reply_markup=kb.back_to_notes_menu
+        )
+        await callback.answer()
+        return
+    
+    # Удаляем заметку
+    success = await rq.delete_note(note_id, callback.from_user.id)
+    
+    if success:
+        await callback.message.answer(
+            f"✅ Заметка '{note.title}' успешно удалена!",
+            reply_markup=kb.notes_menu
+        )
+    else:
+        await callback.message.answer(
+            "❌ Ошибка при удалении заметки.",
+            reply_markup=kb.notes_menu
+        )
+    
     await callback.answer()
 

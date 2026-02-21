@@ -55,5 +55,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 class NotesStates(StatesGroup):
     title = State()        # Ввод названия заметки
-    content = State()  # Ввод заметки
+    content = State()      # Ввод заметки
+    edit_title = State()  # Редактирование заголовка
+    edit_content = State() # Редактирование содержимого
+    delete_confirm = State() # Подтверждение удаления
 
